@@ -1,0 +1,19 @@
+[package]
+name = "emitix"
+version = "1.0.0"
+edition = "2024"
+description = "Emitix - A Rust library for event-driven programming"
+repository = "https://github.com/corebreaker/emitix"
+documentation = "https://docs.rs/emitix/"
+authors = ["Frédéric Meyer <frederic.meyer.77@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["event", "event-driven", "event-listener", "event-dispatcher", "reactive"]
+categories = ["algorithms", "data-structures", "gui"]
+
+# For running these commands with `cargo run-script`, you need to install it first: `cargo install cargo-run-script`
+[package.metadata.scripts]
+fmt = "cargo +nightly fmt --all"
+
+[dependencies]
+anyhow = "1.0"
