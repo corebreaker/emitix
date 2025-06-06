@@ -162,4 +162,8 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
 
         Box::new(LeptosChannelEmitter::new(callback))
     }
+
+    fn new_null_emitter() -> Box<dyn EventEmitter<T>> {
+        Box::new(LeptosChannelEmitter::new(Callback::new(|_| {})))
+    }
 }

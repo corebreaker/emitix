@@ -271,13 +271,53 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
         Ok(registry.remove_listeners_by_kind(event_kind))
     }
 
+    /// Creates a new event emitter for a specific event kind.
+    /// 
+    /// # Arguments
+    /// - `event_kind`: A string that identifies the type of event this emitter will handle.
+    /// 
+    /// # Returns
+    /// - `Box<dyn EventEmitter<T>>` which is a boxed trait object that implements the `EventEmitter` trait.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use emitix::{event_hub::EventHub, EventManager};
+    /// 
+    /// let manager = EventHub::default();
+    /// let emitter = manager.new_emitter("Events You Like");
+    /// emitter.emit(()).unwrap()
+    /// ```
     fn new_emitter(&self, event_kind: &str) -> Box<dyn EventEmitter<T>> {
         Box::new(EventHubEmitter::new(Arc::clone(&self.registry), event_kind.to_string()))
     }
 
+    /// Creates a new event broadcaster that emits events to multiple listeners.
+    /// 
+    /// # Arguments
+    /// - `event_kinds`: A slice of strings that identifies the types of events this broadcaster will handle.
+    /// 
+    /// # Returns
+    /// - `Box<dyn EventEmitter<T>>` which is a boxed trait object that implements the `EventEmitter` trait.
+    /// 
+    /// # Example
+    /// ```rust
+    /// use emitix::{event_hub::EventHub, EventManager};
+    /// 
+    /// let manager = EventHub::default();
+    /// let broadcaster = manager.new_broadcast_emitter(&["Events You Like", "Another Event Kind"]);
+    /// broadcaster.emit(()).unwrap()
+    /// ```
     fn new_broadcast_emitter(&self, event_kinds: &[&str]) -> Box<dyn EventEmitter<T>> {
         let event_kinds = event_kinds.iter().map(|&s| s.to_string()).collect::<Vec<_>>();
 
         Box::new(EventHubBroadcaster::new(Arc::clone(&self.registry), event_kinds))
+    }
+
+    /// Returns a null emitter used as default emitter.
+    /// 
+    /// # Returns
+    /// - `Box<dyn EventEmitter<T>>` which is a boxed trait object that implements the `EventEmitter` trait.
+    fn new_null_emitter() -> Box<dyn EventEmitter<T>> {
+        Box::new(EventHubEmitter::new(Arc::new(RwLock::new(ListenerRegistry::new())), String::new()))
     }
 }

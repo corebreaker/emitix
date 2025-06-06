@@ -20,4 +20,10 @@ impl<T: Clone + Send + Sync + 'static> EventEmitter<T> for LeptosChannelEmitter<
 
         Ok(())
     }
+
+    fn clone(&self) -> Box<dyn EventEmitter<T>> {
+        Box::new(Self {
+            callback: self.callback.clone(),
+        })
+    }
 }
