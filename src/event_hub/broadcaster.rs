@@ -1,15 +1,15 @@
 use super::registry::ListenerRegistry;
 use crate::EventEmitter;
 use anyhow::{Error, Result};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 pub(super) struct EventHubBroadcaster<T: Clone + Send + Sync + 'static> {
-    registry:    Arc<Mutex<ListenerRegistry<T>>>,
+    registry:    Arc<RwLock<ListenerRegistry<T>>>,
     event_kinds: Vec<String>,
 }
 
 impl<T: Clone + Send + Sync + 'static> EventHubBroadcaster<T> {
-    pub(super) fn new(registry: Arc<Mutex<ListenerRegistry<T>>>, event_kinds: Vec<String>) -> Self {
+    pub(super) fn new(registry: Arc<RwLock<ListenerRegistry<T>>>, event_kinds: Vec<String>) -> Self {
         Self {
             registry,
             event_kinds,
@@ -21,7 +21,7 @@ impl<T: Clone + Send + Sync + 'static> EventEmitter<T> for EventHubBroadcaster<T
     fn emit(&self, event_arg: T) -> Result<()> {
         let mut registry = self
             .registry
-            .lock()
+            .write()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         let listeners = registry.listeners_mut();

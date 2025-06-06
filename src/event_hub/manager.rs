@@ -2,7 +2,7 @@ use super::{emitter::EventHubEmitter, broadcaster::EventHubBroadcaster, registry
 use crate::{EventEmitter, EventManager};
 use anyhow::{Result, Error};
 use uuid::Uuid;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 /// `EventHub` is a thread-safe structure for managing events.
 ///
@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 /// - Listeners must be thread-safe functions (`Send` and `Sync`).
 #[derive(Clone)]
 pub struct EventHub<T: Clone + Send + Sync + 'static = ()> {
-    registry: Arc<Mutex<ListenerRegistry<T>>>,
+    registry: Arc<RwLock<ListenerRegistry<T>>>,
 }
 
 impl<T: Clone + Send + Sync + 'static> EventHub<T> {
@@ -68,7 +68,7 @@ impl<T: Clone + Send + Sync + 'static> EventHub<T> {
     pub fn emit(&self, event_kind: &str, event_arg: T) -> Result<()> {
         let mut registry = self
             .registry
-            .lock()
+            .write()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         if let Some(event_listeners) = registry.listeners_mut().get_mut(event_kind) {
@@ -84,7 +84,7 @@ impl<T: Clone + Send + Sync + 'static> EventHub<T> {
 impl<T: Clone + Send + Sync + 'static> Default for EventHub<T> {
     fn default() -> Self {
         Self {
-            registry: Arc::new(Mutex::new(ListenerRegistry::new())),
+            registry: Arc::new(RwLock::new(ListenerRegistry::new())),
         }
     }
 }
@@ -106,7 +106,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn list_event_kinds(&self) -> Result<Vec<String>> {
         let registry = self
             .registry
-            .lock()
+            .read()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         Ok(registry.listeners().keys().cloned().collect::<Vec<_>>())
@@ -129,7 +129,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn has_listeners(&self, event_kind: &str) -> Result<bool> {
         let registry = self
             .registry
-            .lock()
+            .read()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         Ok(registry.listeners().contains_key(event_kind))
@@ -153,7 +153,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn listeners_count(&self, event_kind: &str) -> Result<usize> {
         let registry = self
             .registry
-            .lock()
+            .read()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         Ok(registry.listeners().get(event_kind).map_or(0, |l| l.len()))
@@ -178,7 +178,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn clear_listeners(&self) -> Result<()> {
         let mut registry = self
             .registry
-            .lock()
+            .write()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         registry.clear();
@@ -209,7 +209,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn add_listener<F: FnMut(T) + Send + Sync + 'static>(&self, event_kind: &str, listener: F) -> Result<Uuid> {
         let mut registry = self
             .registry
-            .lock()
+            .write()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         Ok(registry.register_listener(event_kind, listener))
@@ -240,7 +240,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn remove_listener(&self, listener_id: Uuid) -> Result<bool> {
         let mut registry = self
             .registry
-            .lock()
+            .write()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         Ok(registry.remove_listener(listener_id))
@@ -265,7 +265,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     fn remove_listeners_by_kind(&self, event_kind: &str) -> Result<usize> {
         let mut registry = self
             .registry
-            .lock()
+            .write()
             .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
 
         Ok(registry.remove_listeners_by_kind(event_kind))

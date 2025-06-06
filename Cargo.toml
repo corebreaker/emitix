@@ -17,4 +17,12 @@ fmt = "cargo +nightly fmt --all"
 
 [dependencies]
 anyhow = "1.0"
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.17", features = ["v4"] }
+leptos = { version = "0.8", optional = true }
+log = { version = "0.4", optional = true }
+
+[features]
+default = ["std"]
+std = []
+wasm = ["uuid/js"]
+leptos = ["dep:leptos", "dep:log", "wasm"]
