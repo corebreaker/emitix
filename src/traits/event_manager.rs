@@ -80,7 +80,7 @@ pub trait EventManager<T: Clone + Send + Sync + 'static = ()>: Default + Clone +
     /// # Returns
     /// - `Ok(Box<dyn EventEmitter<T>>)` which is a boxed event emitter that can emit events of type `T`.
     /// - `Err(anyhow::Error)` if the emitter could not be created.
-    fn new_emitter(&self, event_kind: &str) -> Result<Box<dyn EventEmitter<T>>>;
+    fn new_emitter(&self, event_kind: &str) -> Box<dyn EventEmitter<T>>;
 
     /// Emits an event of type `T` to all registered listeners for the specified event kinds.
     ///
@@ -90,5 +90,5 @@ pub trait EventManager<T: Clone + Send + Sync + 'static = ()>: Default + Clone +
     /// # Returns
     /// - `Ok(Box<dyn EventEmitter<T>>)` which is a boxed event emitter that can emit events of type `T`.
     /// - `Err(anyhow::Error)` if the emitter could not be created.
-    fn new_broadcast_emitter(&self, event_kinds: &[&str]) -> Result<Box<dyn EventEmitter<T>>>;
+    fn new_broadcast_emitter(&self, event_kinds: &[&str]) -> Box<dyn EventEmitter<T>>;
 }
