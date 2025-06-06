@@ -5,11 +5,11 @@ A Rust library for event-driven programming
 
 ## Example
 ```rust
-use emitix::{EventHub, EventManager};
+use emitix::{event_hub::EventHub, EventManager};
 
 fn main() {
     // Create an event manager
-    let mut manager = EventHub::<()>::new();
+    let mut manager = EventHub::default();
 
     // Add an event listener
     manager.add_listener("event_name", |event_value: String| {
@@ -20,6 +20,7 @@ fn main() {
     manager.emit("event_name", String::new("Hello, world!"));
 }
 ```
+
 
 [Crates.io]: https://img.shields.io/crates/v/emitix?style=for-the-badge
 [Docs.rs]: https://img.shields.io/docsrs/emitix?style=for-the-badge
