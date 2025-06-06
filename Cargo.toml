@@ -1,6 +1,6 @@
 [package]
 name = "emitix"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "Emitix - A Rust library for event-driven programming"
 repository = "https://github.com/corebreaker/emitix"
@@ -17,3 +17,4 @@ fmt = "cargo +nightly fmt --all"
 
 [dependencies]
 anyhow = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
