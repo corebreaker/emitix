@@ -1,7 +1,11 @@
 use uuid::Uuid;
-use std::collections::HashMap;
+use leptos::callback::Callback;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
-pub(super) type ListenerMap<T> = HashMap<String, HashMap<Uuid, Box<dyn FnMut(T) + Send + Sync + 'static>>>;
+pub(super) type ListenerMap<T> = HashMap<String, HashMap<Uuid, Callback<T>>>;
 
 pub(super) struct ListenerRegistry<T: Clone + Send + Sync + 'static> {
     listeners: ListenerMap<T>,
@@ -23,10 +27,6 @@ impl<T: Clone + Send + Sync + 'static> ListenerRegistry<T> {
 
     pub(super) fn listeners(&self) -> &ListenerMap<T> {
         &self.listeners
-    }
-
-    pub(super) fn listeners_mut(&mut self) -> &mut ListenerMap<T> {
-        &mut self.listeners
     }
 
     pub(super) fn remove_listener(&mut self, listener_id: Uuid) -> bool {
@@ -61,11 +61,19 @@ impl<T: Clone + Send + Sync + 'static> ListenerRegistry<T> {
     pub(super) fn register_listener<F>(&mut self, event_kind: &str, listener: F) -> Uuid
     where
         F: FnMut(T) + Send + Sync + 'static, {
+        let f = Arc::new(RwLock::new(listener));
+        let receiver = Callback::new(move |arg| {
+            let f = Arc::clone(&f);
+            if let Ok(mut caller) = f.write() {
+                caller(arg);
+            }
+        });
+
         let listener_id = Uuid::new_v4();
         let event_kind = event_kind.to_string();
         let entry = self.listeners.entry(event_kind.clone()).or_default();
 
-        entry.insert(listener_id, Box::new(listener));
+        entry.insert(listener_id, receiver);
         self.links.insert(listener_id, event_kind);
 
         listener_id
