@@ -91,4 +91,15 @@ pub trait EventManager<T: Clone + Send + Sync + 'static = ()>: Default + Clone +
     /// - `Ok(Box<dyn EventEmitter<T>>)` which is a boxed event emitter that can emit events of type `T`.
     /// - `Err(anyhow::Error)` if the emitter could not be created.
     fn new_broadcast_emitter(&self, event_kinds: &[&str]) -> Box<dyn EventEmitter<T>>;
+    
+    /// Returns a null emitter used as default emitter.
+    ///
+    /// Null emitters do not emit events and do not have any listeners.
+    /// It's like, we call `Self::default().new_emitter("")`.
+    ///
+    /// This is useful when no listeners are registered for an event kind.
+    /// 
+    /// # Returns
+    /// - `Box<dyn EventEmitter<T>>` which is a boxed event emitter that does not emit events.
+    fn new_null_emitter() -> Box<dyn EventEmitter<T>>;
 }

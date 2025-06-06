@@ -41,4 +41,11 @@ impl<T: Clone + Send + Sync + 'static> EventEmitter<T> for EventHubBroadcaster<T
 
         Ok(())
     }
+
+    fn clone(&self) -> Box<dyn EventEmitter<T>> {
+        Box::new(Self {
+            registry:    Arc::clone(&self.registry),
+            event_kinds: self.event_kinds.clone(),
+        })
+    }
 }
