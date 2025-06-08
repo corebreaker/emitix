@@ -1,6 +1,6 @@
 [package]
 name = "emitix"
-version = "1.1.1"
+version = "1.1.2"
 edition = "2024"
 description = "Emitix - A Rust library for event-driven programming"
 repository = "https://github.com/corebreaker/emitix"

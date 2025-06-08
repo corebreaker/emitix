@@ -1,4 +1,4 @@
-use super::{emitter::EventHubEmitter, broadcaster::EventHubBroadcaster, registry::ListenerRegistry};
+use super::{emitter::EventHubEmitter, listener::Listener, registry::ListenerRegistry};
 use crate::{EventEmitter, EventManager};
 use anyhow::{Result, Error};
 use uuid::Uuid;
@@ -66,15 +66,27 @@ impl<T: Clone + Send + Sync + 'static> EventHub<T> {
     ///     .unwrap();
     /// ```
     pub fn emit(&self, event_kind: &str, event_arg: T) -> Result<()> {
-        let mut registry = self
+        let listeners = self
             .registry
-            .write()
-            .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?;
+            .read()
+            .map_err(|err| Error::msg(format!("Mutex lock failed in event hub: {err}")))?
+            .listeners()
+            .get(event_kind)
+            .map(|list| list.values().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
 
-        if let Some(event_listeners) = registry.listeners_mut().get_mut(event_kind) {
-            for listener in event_listeners.values_mut() {
-                listener(event_arg.clone());
+        let mut errors = vec![];
+        for listener in listeners {
+            if let Err(err) = listener.call(event_arg.clone()) {
+                errors.push(err);
             }
+        }
+
+        if !errors.is_empty() {
+            return Err(Error::msg(format!(
+                "Failed to emit event '{event_kind}':\n{}",
+                errors.into_iter().map(|err| format!("\n  - {err}")).collect::<String>(),
+            )));
         }
 
         Ok(())
@@ -272,52 +284,131 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for EventHub<T> {
     }
 
     /// Creates a new event emitter for a specific event kind.
-    /// 
+    ///
     /// # Arguments
     /// - `event_kind`: A string that identifies the type of event this emitter will handle.
-    /// 
+    ///
     /// # Returns
     /// - `Box<dyn EventEmitter<T>>` which is a boxed trait object that implements the `EventEmitter` trait.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use emitix::{event_hub::EventHub, EventManager};
-    /// 
+    ///
     /// let manager = EventHub::default();
     /// let emitter = manager.new_emitter("Events You Like");
     /// emitter.emit(()).unwrap()
     /// ```
     fn new_emitter(&self, event_kind: &str) -> Box<dyn EventEmitter<T>> {
-        Box::new(EventHubEmitter::new(Arc::clone(&self.registry), event_kind.to_string()))
+        let event_kind = event_kind.to_string();
+        let registry = Arc::clone(&self.registry);
+        let listener = Listener::new(move |event_arg: T| -> Result<()> {
+            let listeners = registry
+                .read()
+                .map_err(|err| {
+                    let msg = format!("Mutex lock failed in event hub for kind `{event_kind}`: {err}");
+
+                    Error::msg(msg)
+                })?
+                .listeners()
+                .get(&event_kind)
+                .map(|listeners| listeners.values().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+
+            let mut errors = vec![];
+            for listener in listeners {
+                if let Err(err) = listener.call(event_arg.clone()) {
+                    errors.push(err);
+                }
+            }
+
+            if !errors.is_empty() {
+                return Err(Error::msg(format!(
+                    "Failed to emit event '{event_kind}':{errors}",
+                    errors = errors.into_iter().map(|err| format!("\n  - {err}")).collect::<String>(),
+                )));
+            }
+
+            Ok(())
+        });
+
+        Box::new(EventHubEmitter::new(listener))
     }
 
     /// Creates a new event broadcaster that emits events to multiple listeners.
-    /// 
+    ///
     /// # Arguments
     /// - `event_kinds`: A slice of strings that identifies the types of events this broadcaster will handle.
-    /// 
+    ///
     /// # Returns
     /// - `Box<dyn EventEmitter<T>>` which is a boxed trait object that implements the `EventEmitter` trait.
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// use emitix::{event_hub::EventHub, EventManager};
-    /// 
+    ///
     /// let manager = EventHub::default();
     /// let broadcaster = manager.new_broadcast_emitter(&["Events You Like", "Another Event Kind"]);
     /// broadcaster.emit(()).unwrap()
     /// ```
     fn new_broadcast_emitter(&self, event_kinds: &[&str]) -> Box<dyn EventEmitter<T>> {
-        let event_kinds = event_kinds.iter().map(|&s| s.to_string()).collect::<Vec<_>>();
+        let event_kinds = if event_kinds.is_empty() {
+            None
+        } else {
+            Some(event_kinds.iter().map(|&s| s.to_string()).collect::<Vec<_>>())
+        };
 
-        Box::new(EventHubBroadcaster::new(Arc::clone(&self.registry), event_kinds))
+        let registry = Arc::clone(&self.registry);
+        let listener = Listener::new(move |event_arg: T| -> Result<()> {
+            let (listeners, event_kinds) = {
+                let registry = registry.read().map_err(|err| {
+                    let event_kinds = event_kinds.as_ref().map(|l| l.join(", ")).unwrap_or_default();
+                    let msg = format!("Mutex lock failed in event hub for kind `{event_kinds}`: {err}");
+
+                    Error::msg(msg)
+                })?;
+
+                let listeners = registry.listeners();
+                let kinds_to_process = match &event_kinds {
+                    Some(list) => list.clone(),
+                    None => listeners.keys().cloned().collect::<Vec<_>>(),
+                };
+
+                let mut event_listeners = Vec::new();
+                for event_kind in &kinds_to_process {
+                    if let Some(callbacks) = listeners.get(event_kind) {
+                        event_listeners.extend(callbacks.values().cloned());
+                    }
+                }
+
+                (event_listeners, kinds_to_process.join(", "))
+            };
+
+            let mut errors = vec![];
+            for listener in listeners {
+                if let Err(err) = listener.call(event_arg.clone()) {
+                    errors.push(err);
+                }
+            }
+
+            if !errors.is_empty() {
+                return Err(Error::msg(format!(
+                    "Failed to emit event from hub for kinds '{event_kinds}':{errors}",
+                    errors = errors.into_iter().map(|err| format!("\n  - {err}")).collect::<String>(),
+                )));
+            }
+
+            Ok(())
+        });
+
+        Box::new(EventHubEmitter::new(listener))
     }
 
     /// Returns a null emitter used as default emitter.
-    /// 
+    ///
     /// # Returns
     /// - `Box<dyn EventEmitter<T>>` which is a boxed trait object that implements the `EventEmitter` trait.
     fn new_null_emitter() -> Box<dyn EventEmitter<T>> {
-        Box::new(EventHubEmitter::new(Arc::new(RwLock::new(ListenerRegistry::new())), String::new()))
+        Box::new(EventHubEmitter::new(Listener::new(|_| Ok(()))))
     }
 }
