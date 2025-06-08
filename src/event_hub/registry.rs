@@ -1,7 +1,8 @@
+use super::listener::Listener;
 use uuid::Uuid;
 use std::collections::HashMap;
 
-pub(super) type ListenerMap<T> = HashMap<String, HashMap<Uuid, Box<dyn FnMut(T) + Send + Sync + 'static>>>;
+pub(super) type ListenerMap<T> = HashMap<String, HashMap<Uuid, Listener<T>>>;
 
 pub(super) struct ListenerRegistry<T: Clone + Send + Sync + 'static> {
     listeners: ListenerMap<T>,
@@ -23,10 +24,6 @@ impl<T: Clone + Send + Sync + 'static> ListenerRegistry<T> {
 
     pub(super) fn listeners(&self) -> &ListenerMap<T> {
         &self.listeners
-    }
-
-    pub(super) fn listeners_mut(&mut self) -> &mut ListenerMap<T> {
-        &mut self.listeners
     }
 
     pub(super) fn remove_listener(&mut self, listener_id: Uuid) -> bool {
@@ -58,14 +55,21 @@ impl<T: Clone + Send + Sync + 'static> ListenerRegistry<T> {
         }
     }
 
-    pub(super) fn register_listener<F>(&mut self, event_kind: &str, listener: F) -> Uuid
+    pub(super) fn register_listener<F>(&mut self, event_kind: &str, mut listener: F) -> Uuid
     where
         F: FnMut(T) + Send + Sync + 'static, {
         let listener_id = Uuid::new_v4();
         let event_kind = event_kind.to_string();
         let entry = self.listeners.entry(event_kind.clone()).or_default();
 
-        entry.insert(listener_id, Box::new(listener));
+        entry.insert(
+            listener_id,
+            Listener::new(move |arg| {
+                listener(arg);
+                Ok(())
+            }),
+        );
+
         self.links.insert(listener_id, event_kind);
 
         listener_id

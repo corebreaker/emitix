@@ -11,9 +11,9 @@ pub trait EventEmitter<T: Clone + Send + Sync + 'static = ()>: Send + Sync + 'st
     /// - `Err(anyhow::Error)` if access to the underlying data structure fails,
     ///     or if no listeners are found for the event kind.
     fn emit(&self, event_arg: T) -> Result<()>;
-    
+
     /// Returns the event emitter.
-    /// 
+    ///
     /// # Returns
     /// - A cloned instance of the event emitter.
     fn clone(&self) -> Box<dyn EventEmitter<T>>;

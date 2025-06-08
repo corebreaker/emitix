@@ -15,6 +15,27 @@ impl<T: Clone + Send + Sync + 'static> LeptosEventChannels<T> {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn emit(&self, event_kind: &str, event_arg: T) -> Result<()> {
+        let callbacks = {
+            let registry = self
+                .registry
+                .read()
+                .map_err(|err| Error::msg(format!("Mutex lock failed in Leptos event channels: {err}")))?;
+
+            registry
+                .listeners()
+                .get(event_kind)
+                .map(|list| list.values().cloned().collect::<Vec<_>>())
+                .unwrap_or_default()
+        };
+
+        for callback in callbacks {
+            callback.run(event_arg.clone());
+        }
+
+        Ok(())
+    }
 }
 
 impl<T: Clone + Send + Sync + 'static> Default for LeptosEventChannels<T> {
@@ -95,11 +116,11 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
         let registry = Arc::clone(&self.registry);
 
         let callback = Callback::new(move |event_arg: T| {
-            let event_listeners = {
+            let callbacks = {
                 let registry = match registry.read() {
                     Ok(lock) => lock,
                     Err(err) => {
-                        error!("Failed to lock the registry in Leptos event channels: {err}.");
+                        error!("Failed to lock the registry in Leptos event channels for kind `{event_kind}`: {err}.");
                         return;
                     }
                 };
@@ -108,12 +129,11 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
                     .listeners()
                     .get(&event_kind)
                     .map(|listeners| listeners.values().cloned().collect::<Vec<_>>())
+                    .unwrap_or_default()
             };
 
-            if let Some(callbacks) = event_listeners {
-                for callback in callbacks {
-                    callback.run(event_arg.clone());
-                }
+            for callback in callbacks {
+                callback.run(event_arg.clone());
             }
         });
 
@@ -127,6 +147,7 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
             Some(event_kinds.iter().map(|&s| s.to_string()).collect::<Vec<_>>())
         };
 
+        let kind_list = event_kinds.as_ref().map(|v| v.join(", ")).unwrap_or_default();
         let registry = Arc::clone(&self.registry);
 
         let callback = Callback::new(move |event_arg: T| {
@@ -134,19 +155,19 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
                 let registry = match registry.read() {
                     Ok(lock) => lock,
                     Err(err) => {
-                        error!("Failed to lock the registry in Leptos event channels: {err}.");
+                        error!("Failed to lock the registry in Leptos event channels for kinds {kind_list}: {err}.");
                         return;
                     }
                 };
 
                 let listeners = registry.listeners();
-                let event_kinds = match &event_kinds {
+                let kinds_to_process = match &event_kinds {
                     Some(list) => list.clone(),
                     None => listeners.keys().cloned().collect::<Vec<_>>(),
                 };
 
-                let mut event_listeners: Vec<Callback<T>> = vec![];
-                for event_kind in event_kinds {
+                let mut event_listeners = Vec::new();
+                for event_kind in kinds_to_process {
                     if let Some(callbacks) = listeners.get(&event_kind) {
                         event_listeners.extend(callbacks.values().cloned());
                     }
