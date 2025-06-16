@@ -16,6 +16,27 @@ impl<T: Clone + Send + Sync + 'static> LeptosEventChannels<T> {
         Self::default()
     }
 
+    fn call_listeners(reg: Arc<RwLock<ListenerRegistry<T>>>, list: Vec<(Uuid, Callback<T>)>, arg: T) -> Result<()> {
+        let mut to_dispose = vec![];
+        for (id, callback) in list {
+            if let None = callback.try_run(arg.clone()) {
+                to_dispose.push(id);
+            }
+        }
+
+        if !to_dispose.is_empty() {
+            let mut registry = reg
+                .write()
+                .map_err(|err| Error::msg(format!("Mutex lock failed in Leptos event channels: {err}")))?;
+
+            for id in to_dispose {
+                registry.remove_listener(id);
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn emit(&self, event_kind: &str, event_arg: T) -> Result<()> {
         let callbacks = {
             let registry = self
@@ -26,15 +47,11 @@ impl<T: Clone + Send + Sync + 'static> LeptosEventChannels<T> {
             registry
                 .listeners()
                 .get(event_kind)
-                .map(|list| list.values().cloned().collect::<Vec<_>>())
+                .map(|list| list.iter().map(|(id, cb)| (*id, cb.clone())).collect::<Vec<(_, _)>>())
                 .unwrap_or_default()
         };
 
-        for callback in callbacks {
-            callback.run(event_arg.clone());
-        }
-
-        Ok(())
+        Self::call_listeners(Arc::clone(&self.registry), callbacks, event_arg)
     }
 }
 
@@ -128,12 +145,12 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
                 registry
                     .listeners()
                     .get(&event_kind)
-                    .map(|listeners| listeners.values().cloned().collect::<Vec<_>>())
+                    .map(|list| list.iter().map(|(id, cb)| (*id, cb.clone())).collect::<Vec<(_, _)>>())
                     .unwrap_or_default()
             };
 
-            for callback in callbacks {
-                callback.run(event_arg.clone());
+            if let Err(err) = Self::call_listeners(Arc::clone(&registry), callbacks, event_arg) {
+                error!("Failed to lock in write the registry in Leptos event channels for kind {event_kind}: {err}.");
             }
         });
 
@@ -169,15 +186,15 @@ impl<T: Clone + Send + Sync + 'static> EventManager<T> for LeptosEventChannels<T
                 let mut event_listeners = Vec::new();
                 for event_kind in kinds_to_process {
                     if let Some(callbacks) = listeners.get(&event_kind) {
-                        event_listeners.extend(callbacks.values().cloned());
+                        event_listeners.extend(callbacks.iter().map(|(id, cb)| (*id, cb.clone())));
                     }
                 }
 
                 event_listeners
             };
 
-            for callback in callbacks {
-                callback.run(event_arg.clone());
+            if let Err(err) = Self::call_listeners(Arc::clone(&registry), callbacks, event_arg) {
+                error!("Failed to lock in write the registry in Leptos event channels for kinds {kind_list}: {err}.");
             }
         });
 
