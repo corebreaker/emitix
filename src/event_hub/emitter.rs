@@ -9,7 +9,7 @@ pub(super) struct EventHubEmitter<T: Clone + Send + Sync + 'static> {
 impl<T: Clone + Send + Sync + 'static> EventHubEmitter<T> {
     pub(super) fn new(listener: Listener<T>) -> Self {
         Self {
-            listener
+            listener,
         }
     }
 }
